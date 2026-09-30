@@ -176,7 +176,7 @@ class $modify(FWCPlayLayer, PlayLayer) {
     void handleButton(bool down, int button, bool isPlayer1) {
         PlayLayer::handleButton(down, button, isPlayer1);
 
-        if (down && isPlayer1 && !m_isDead) {
+        if (down && isPlayer1 && m_player1 && !m_player1->m_isDead) {
             int currentF = m_fields->m_currentPhysicsFrame;
             int delta = currentF - m_fields->m_lastInputFrame;
             m_fields->m_lastInputFrame = currentF;
