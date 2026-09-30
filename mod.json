@@ -1,0 +1,11 @@
+{
+	"geode": "5.10.1",
+	"gd": {
+		"win": "2.208"
+	},
+	"version": "v1.0.0",
+	"id": "user.frame_window_counter",
+	"name": "Frame Window Counter",
+	"developer": "User",
+	"description": "Contador de ventanas de frames al estilo NaN GD con botón toggle para Geometry Dash 2.208."
+}

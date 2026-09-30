@@ -1,0 +1,24 @@
+# Build directories
+build/
+cmake-build-*/
+out/
+
+# Geode cache and bindings
+.geode/
+.geode_cache/
+geode-deps/
+bindings/
+
+# IDE files
+.vs/
+.vscode/
+*.user
+*.suo
+
+# Compiled binaries
+*.geode
+*.dll
+*.lib
+*.pdb
+*.exp
+*.obj
