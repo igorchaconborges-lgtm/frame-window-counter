@@ -7,5 +7,10 @@
 	"id": "user.frame_window_counter",
 	"name": "Frame Window Counter",
 	"developer": "User",
-	"description": "Contador de ventanas de frames al estilo NaN GD con botón toggle para Geometry Dash 2.208."
+	"description": "Contador de ventanas de frames al estilo NaN GD con botón toggle para Geometry Dash 2.208.",
+	"resources": {
+		"sprites": [
+			"resources/*.png"
+		]
+	}
 }
