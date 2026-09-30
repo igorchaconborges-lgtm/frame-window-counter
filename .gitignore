@@ -22,3 +22,4 @@ bindings/
 *.pdb
 *.exp
 *.obj
+b64_toggle.txt
