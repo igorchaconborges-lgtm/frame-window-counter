@@ -437,7 +437,7 @@ class $modify(FWCPlayLayer, PlayLayer) {
         return true;
     }
 
-    size_t getMacroActionCount() const {
+    size_t getMacroActionCount() {
         return m_fields->m_actions.size();
     }
 };
