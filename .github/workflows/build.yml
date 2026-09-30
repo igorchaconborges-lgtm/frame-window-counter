@@ -22,6 +22,15 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
+      - name: Prepare Fixed Bindings
+        shell: pwsh
+        run: |
+          $dest = Join-Path $env:RUNNER_TEMP "bindings"
+          git clone --depth 1 https://github.com/geode-sdk/bindings.git $dest
+          $file = Join-Path $dest "bindings/2.208/GeometryDash.bro"
+          (Get-Content $file -Raw) -replace 'm1 = 0x4beb30, imac = 0x570dd0', 'm1 0x4beb30, imac 0x570dd0' | Set-Content $file
+          "GEODE_BINDINGS_REPO_PATH=$dest" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
       - name: Build Mod with Geode SDK
         id: build
         uses: geode-sdk/build-geode-mod@main
