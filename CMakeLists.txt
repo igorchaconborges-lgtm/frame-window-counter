@@ -11,9 +11,10 @@ file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS src/*.cpp src/*.hpp)
 # Define the mod shared library
 add_library(${PROJECT_NAME} SHARED ${SOURCES})
 
-# Target GD version
+# Configure GD target version and comparable integer version
 if (NOT DEFINED GEODE_GD_VERSION)
-    set(GEODE_GD_VERSION "2.208" CACHE INTERNAL "Geode GD Version")
+    set(GEODE_GD_VERSION 2.2081 CACHE INTERNAL "Geode GD Version")
+    set(GEODE_COMP_GD_VERSION 22081 CACHE INTERNAL "Geode Comparable GD Version")
 endif()
 
 # Check for GEODE_SDK
