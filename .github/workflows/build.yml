@@ -27,8 +27,15 @@ jobs:
         run: |
           $dest = Join-Path $env:RUNNER_TEMP "bindings"
           git clone --depth 1 https://github.com/geode-sdk/bindings.git $dest
-          $file = Join-Path $dest "bindings/2.208/GeometryDash.bro"
-          (Get-Content $file -Raw) -replace 'm1 = 0x4beb30, imac = 0x570dd0', 'm1 0x4beb30, imac 0x570dd0' | Set-Content $file
+          
+          # Fix 1: Sintaxis en GeometryDash.bro linea 7059
+          $bro = Join-Path $dest "bindings/2.208/GeometryDash.bro"
+          (Get-Content $bro -Raw) -replace 'm1 = 0x4beb30, imac = 0x570dd0', 'm1 0x4beb30, imac 0x570dd0' | Set-Content $bro
+          
+          # Fix 2: Habilitar LeaderboardState en GD 2.208+
+          $enums = Join-Path $dest "bindings/include/Geode/Enums.hpp"
+          (Get-Content $enums -Raw) -replace '#if GEODE_COMP_GD_VERSION < 22080', '#if 1' | Set-Content $enums
+
           "GEODE_BINDINGS_REPO_PATH=$dest" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
       - name: Build Mod with Geode SDK
