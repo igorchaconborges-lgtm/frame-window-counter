@@ -10,11 +10,12 @@
 #include <sstream>
 #include <algorithm>
 #include <filesystem>
+#include <chrono>
 #include <cmath>
 
 using namespace geode::prelude;
 
-// Configuracion de los rangos de tolerancia por color (NaN GD standard)
+// Configuracion de los rangos de tolerancia por color (NaN GD standard a 60 FPS)
 struct FrameTier {
     const char* label;
     double minF;
@@ -23,13 +24,13 @@ struct FrameTier {
 };
 
 static const std::vector<FrameTier> FRAME_TIERS = {
-    { "1 F",    0.0,    1.0,  {255, 55,  55}  }, // Rojo / Frame Perfect
-    { "2 F",    1.0001, 2.0,  {255, 140, 30}  }, // Naranja
-    { "3 F",    2.0001, 3.0,  {255, 225, 40}  }, // Amarillo
-    { "4 F",    3.0001, 4.0,  {175, 255, 45}  }, // Lima
-    { "5-6 F",  4.0001, 6.0,  {60,  220, 80}  }, // Verde
-    { "7-8 F",  6.0001, 8.0,  {70,  200, 255} }, // Azul claro
-    { "9-12 F", 8.0001, 12.0, {60,  130, 255} }, // Azul
+    { "1 F",    0.0,  1.0,  {255, 55,  55}  }, // Rojo / Frame Perfect
+    { "2 F",    1.0,  2.0,  {255, 140, 30}  }, // Naranja
+    { "3 F",    2.0,  3.0,  {255, 225, 40}  }, // Amarillo
+    { "4 F",    3.0,  4.0,  {175, 255, 45}  }, // Lima
+    { "5-6 F",  4.0,  6.0,  {60,  220, 80}  }, // Verde
+    { "7-8 F",  6.0,  8.0,  {70,  200, 255} }, // Azul claro
+    { "9-12 F", 8.0,  12.0, {60,  130, 255} }, // Azul
 };
 
 // Accion o salto precalculado estilo NaN GD
@@ -121,10 +122,10 @@ class $modify(FWCPlayLayer, PlayLayer) {
         size_t m_nextActionIdx = 0;
         int m_lastFrame = -1;
 
-        int m_pressFrame = 0;
+        std::chrono::steady_clock::time_point m_pressTimePoint{};
+        float m_holdSeconds = 0.0f;
         bool m_isHolding = false;
         bool m_holdCounted = false;
-        int m_currentPhysicsFrame = 0;
         bool m_hasMacro = false;
     };
 
@@ -216,8 +217,7 @@ class $modify(FWCPlayLayer, PlayLayer) {
         }
         this->updateValueLabels();
 
-        m_fields->m_currentPhysicsFrame = 0;
-        m_fields->m_pressFrame = 0;
+        m_fields->m_holdSeconds = 0.0f;
         m_fields->m_isHolding = false;
         m_fields->m_holdCounted = false;
         m_fields->m_lastFrame = -1;
@@ -226,25 +226,41 @@ class $modify(FWCPlayLayer, PlayLayer) {
 
     void destroyPlayer(PlayerObject* player, GameObject* object) {
         PlayLayer::destroyPlayer(player, object);
-        if (player == m_player1 && m_fields->m_isHolding && !m_fields->m_holdCounted) {
+        if (player == m_player1) {
+            // Al morir, cancelamos cualquier pulsacion pendiente sin registrar nada.
+            // NO se debe registrar ni sumar ningun salto al morir.
             m_fields->m_isHolding = false;
-            int holdDuration = m_fields->m_currentPhysicsFrame - m_fields->m_pressFrame;
-            if (holdDuration < 1) holdDuration = 1;
-            this->recordJump(static_cast<double>(holdDuration));
             m_fields->m_holdCounted = true;
         }
-        m_fields->m_isHolding = false;
+    }
+
+    void pauseGame(bool p0) {
+        if (m_fields->m_isHolding) {
+            m_fields->m_isHolding = false;
+            m_fields->m_holdCounted = true;
+        }
+        PlayLayer::pauseGame(p0);
     }
 
     void postUpdate(float dt) {
         PlayLayer::postUpdate(dt);
-        m_fields->m_currentPhysicsFrame++;
 
-        // Si el jugador esta manteniendo pulsado y supera la ventana maxima, registrar inmediatamente
+        // Si el jugador esta muerto, asegurar que no se procese nada
+        if (!m_player1 || m_player1->m_isDead) {
+            m_fields->m_isHolding = false;
+            m_fields->m_holdCounted = true;
+            return;
+        }
+
+        // Acumular tiempo mientras el boton este presionado
         if (m_fields->m_isHolding && !m_fields->m_holdCounted) {
-            int holdDuration = m_fields->m_currentPhysicsFrame - m_fields->m_pressFrame;
-            if (holdDuration >= 9) {
-                this->recordJump(9.0);
+            float safeDt = (dt > 0.0f && dt < 0.1f) ? dt : (1.0f / 60.0f);
+            m_fields->m_holdSeconds += safeDt;
+
+            // Si la pulsacion supera los 12 frames a 60 FPS (> 0.20s),
+            // se considera un hold prolongado (vuelo de nave, wave continuo o salto sostenido)
+            // y queda completamente descartado para no clasificarlo falsamente en 9-12 F.
+            if (m_fields->m_holdSeconds > (12.0f / 60.0f)) {
                 m_fields->m_holdCounted = true;
             }
         }
@@ -270,7 +286,8 @@ class $modify(FWCPlayLayer, PlayLayer) {
 
                     for (size_t i = 0; i < FRAME_TIERS.size(); ++i) {
                         const auto& tier = FRAME_TIERS[i];
-                        if (fw >= tier.minF && fw <= tier.maxF) {
+                        bool match = (i == 0) ? (fw <= tier.maxF) : (fw > tier.minF && fw <= tier.maxF);
+                        if (match) {
                             m_fields->m_counts[i]++;
                             changed = true;
                             this->spawnMarker(fw, tier.color);
@@ -294,25 +311,42 @@ class $modify(FWCPlayLayer, PlayLayer) {
         m_fields->m_isHolding = down;
 
         if (down) {
-            m_fields->m_pressFrame = m_fields->m_currentPhysicsFrame;
+            m_fields->m_pressTimePoint = std::chrono::steady_clock::now();
+            m_fields->m_holdSeconds = 0.0f;
             m_fields->m_holdCounted = false;
         } else {
             if (!m_fields->m_holdCounted) {
-                int holdDuration = m_fields->m_currentPhysicsFrame - m_fields->m_pressFrame;
-                if (holdDuration < 1) holdDuration = 1;
-                this->recordJump(static_cast<double>(holdDuration));
                 m_fields->m_holdCounted = true;
+
+                double duration = static_cast<double>(m_fields->m_holdSeconds);
+                if (duration < 0.001) {
+                    auto now = std::chrono::steady_clock::now();
+                    duration = std::chrono::duration<double>(now - m_fields->m_pressTimePoint).count();
+                }
+
+                // Normalizar a frames estandar a 60 FPS
+                double frames = duration * 60.0;
+                if (frames < 0.5) frames = 1.0; // Minimo 1 frame
+
+                // Solo registrar si entra en la clasificacion de Frame Window (maximo 12 frames a 60 FPS)
+                if (frames <= 12.0) {
+                    this->recordJump(frames);
+                }
             }
         }
     }
 
     void recordJump(double fw) {
         if (m_fields->m_hasMacro) return;
+        // Limite estricto: > 12 frames no entra en ninguna categoria de ventana
+        if (fw < 0.5 || fw > 12.0) return;
+
         for (size_t i = 0; i < FRAME_TIERS.size(); ++i) {
             const auto& tier = FRAME_TIERS[i];
-            if ((fw >= tier.minF && fw <= tier.maxF) || (i == 6 && fw > 8.0)) {
+            bool match = (i == 0) ? (fw <= tier.maxF) : (fw > tier.minF && fw <= tier.maxF);
+            if (match) {
                 m_fields->m_counts[i]++;
-                this->spawnMarker(fw > 12.0 ? 12.0 : fw, tier.color);
+                this->spawnMarker(fw, tier.color);
                 this->updateValueLabels();
                 break;
             }
@@ -320,7 +354,8 @@ class $modify(FWCPlayLayer, PlayLayer) {
     }
 
     void spawnMarker(double fw, ccColor3B color) {
-        if (!m_player1) return;
+        if (!m_player1 || m_player1->m_isDead) return;
+        if (fw > 12.0) return;
 
         std::string text;
         if (fw <= 1.0) text = "1 F";
@@ -329,7 +364,8 @@ class $modify(FWCPlayLayer, PlayLayer) {
         else if (fw <= 4.0) text = "4 F";
         else if (fw <= 6.0) text = "5-6 F";
         else if (fw <= 8.0) text = "7-8 F";
-        else text = "9-12 F";
+        else if (fw <= 12.0) text = "9-12 F";
+        else return;
 
         auto label = CCLabelBMFont::create(text.c_str(), "goldFont.fnt");
         if (!label) return;
