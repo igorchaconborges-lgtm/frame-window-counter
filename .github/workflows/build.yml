@@ -15,8 +15,24 @@ on:
 
 jobs:
   build:
-    name: Build Windows (.geode)
-    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        config:
+          - name: Windows
+            os: windows-latest
+            target: Win64
+
+          - name: Android32
+            os: ubuntu-latest
+            target: Android32
+
+          - name: Android64
+            os: ubuntu-latest
+            target: Android64
+
+    name: Build ${{ matrix.config.name }}
+    runs-on: ${{ matrix.config.os }}
 
     steps:
       - name: Checkout Repository
@@ -30,11 +46,15 @@ jobs:
           
           # Fix 1: Sintaxis en GeometryDash.bro linea 7059
           $bro = Join-Path $dest "bindings/2.208/GeometryDash.bro"
-          (Get-Content $bro -Raw) -replace 'm1 = 0x4beb30, imac = 0x570dd0', 'm1 0x4beb30, imac 0x570dd0' | Set-Content $bro
+          if (Test-Path $bro) {
+            (Get-Content $bro -Raw) -replace 'm1 = 0x4beb30, imac = 0x570dd0', 'm1 0x4beb30, imac 0x570dd0' | Set-Content $bro
+          }
           
           # Fix 2: Habilitar LeaderboardState en GD 2.208+
           $enums = Join-Path $dest "bindings/include/Geode/Enums.hpp"
-          (Get-Content $enums -Raw) -replace '#if GEODE_COMP_GD_VERSION < 22080', '#if 1' | Set-Content $enums
+          if (Test-Path $enums) {
+            (Get-Content $enums -Raw) -replace '#if GEODE_COMP_GD_VERSION < 22080', '#if 1' | Set-Content $enums
+          }
 
           "GEODE_BINDINGS_REPO_PATH=$dest" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
 
@@ -43,11 +63,28 @@ jobs:
         uses: geode-sdk/build-geode-mod@main
         with:
           combine: true
+          target: ${{ matrix.config.target }}
 
-      - name: Upload .geode Artifact
+      - name: Upload Platform Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: geode-mod-windows
+          name: geode-mod-${{ matrix.config.name }}
           path: |
             build/**/*.geode
             *.geode
+
+  package:
+    name: Package Universal Mod (Windows + Android)
+    runs-on: ubuntu-latest
+    needs: ['build']
+
+    steps:
+      - name: Combine Builds into Universal Mod
+        uses: geode-sdk/build-geode-mod/combine@main
+        id: combine
+
+      - name: Upload Universal Mod Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: geode-mod-universal
+          path: ${{ steps.combine.outputs.build-output }}
